@@ -13,6 +13,7 @@
 // limitations under the License.
 
 pub mod ack_message_request_header;
+pub mod admin;
 pub mod broker;
 pub mod change_invisible_time_request_header;
 pub mod change_invisible_time_response_header;
