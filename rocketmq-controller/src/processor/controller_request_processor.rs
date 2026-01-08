@@ -88,12 +88,14 @@ use std::sync::Arc;
 use crate::heartbeat::default_broker_heartbeat_manager::DefaultBrokerHeartbeatManager;
 use crate::manager::ControllerManager;
 use crate::Controller;
+use rocketmq_error::RocketMQError;
 use rocketmq_error::RocketMQResult;
 use rocketmq_remoting::code::request_code::RequestCode;
 use rocketmq_remoting::code::response_code::ResponseCode;
 use rocketmq_remoting::net::channel::Channel;
 use rocketmq_remoting::protocol::remoting_command::RemotingCommand;
 use rocketmq_remoting::protocol::RemotingDeserializable;
+use rocketmq_remoting::remoting::InvokeCallback;
 use rocketmq_remoting::runtime::connection_handler_context::ConnectionHandlerContext;
 use rocketmq_remoting::runtime::processor::RequestProcessor;
 use rocketmq_rust::ArcMut;
@@ -467,6 +469,16 @@ impl ControllerRequestProcessor {
         _ctx: ConnectionHandlerContext,
         _request: &mut RemotingCommand,
     ) -> RocketMQResult<Option<RemotingCommand>> {
+        use rocketmq_remoting::protocol::header::admin::clean_controller_broker_data_request_header::CleanBrokerDataRequestHeader;
+        let result = _request
+            .decode_command_custom_header::<CleanBrokerDataRequestHeader>()
+            .map_err(|e| {
+                RocketMQError::request_header_error(format!(
+                    "Failed to decode CleanControllerBrokerDataRequestHeader: {:?}",
+                    e
+                ))
+            })?;
+self.controller_manager.controller().clean_broker_data_legacy(&result)
         unimplemented!("unimplemented handle_clean_broker_data")
     }
 

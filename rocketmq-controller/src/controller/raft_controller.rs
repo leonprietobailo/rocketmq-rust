@@ -20,6 +20,7 @@ use cheetah_string::CheetahString;
 use rocketmq_common::common::controller::ControllerConfig;
 use rocketmq_error::RocketMQResult;
 use rocketmq_remoting::protocol::body::sync_state_set_body::SyncStateSet;
+use rocketmq_remoting::protocol::header::admin::clean_controller_broker_data_request_header::CleanBrokerDataRequestHeader;
 use rocketmq_remoting::protocol::header::controller::alter_sync_state_set_request_header::AlterSyncStateSetRequestHeader;
 use rocketmq_remoting::protocol::header::controller::apply_broker_id_request_header::ApplyBrokerIdRequestHeader;
 use rocketmq_remoting::protocol::header::controller::elect_master_request_header::ElectMasterRequestHeader;
@@ -121,14 +122,24 @@ impl Controller for RaftController {
         }
     }
 
-    async fn clean_broker_data(
+    async fn clean_broker_data_legacy(
         &self,
         cluster_name: CheetahString,
         broker_name: CheetahString,
     ) -> RocketMQResult<Option<RemotingCommand>> {
         match self {
-            Self::OpenRaft(controller) => controller.clean_broker_data(cluster_name, broker_name).await,
-            Self::RaftRs(controller) => controller.clean_broker_data(cluster_name, broker_name).await,
+            Self::OpenRaft(controller) => controller.clean_broker_data_legacy(cluster_name, broker_name).await,
+            Self::RaftRs(controller) => controller.clean_broker_data_legacy(cluster_name, broker_name).await,
+        }
+    }
+
+    async fn clean_broker_data(
+        &self,
+        header: &CleanBrokerDataRequestHeader,
+    ) -> RocketMQResult<Option<RemotingCommand>> {
+        match self {
+            Self::OpenRaft(controller) => controller.clean_broker_data(header).await,
+            Self::RaftRs(controller) => controller.clean_broker_data(header).await,
         }
     }
 

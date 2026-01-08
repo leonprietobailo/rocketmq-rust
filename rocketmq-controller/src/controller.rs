@@ -117,6 +117,7 @@ use std::sync::Arc;
 use cheetah_string::CheetahString;
 use rocketmq_error::RocketMQResult;
 use rocketmq_remoting::protocol::body::sync_state_set_body::SyncStateSet;
+use rocketmq_remoting::protocol::header::admin::clean_controller_broker_data_request_header::CleanBrokerDataRequestHeader;
 use rocketmq_remoting::protocol::header::controller::alter_sync_state_set_request_header::AlterSyncStateSetRequestHeader;
 use rocketmq_remoting::protocol::header::controller::apply_broker_id_request_header::ApplyBrokerIdRequestHeader;
 use rocketmq_remoting::protocol::header::controller::elect_master_request_header::ElectMasterRequestHeader;
@@ -325,11 +326,27 @@ pub trait Controller: Send + Sync {
     /// # Returns
     ///
     /// RemotingCommand indicating success or error
-    async fn clean_broker_data(
+    #[deprecated(note = "Use clean_broker_data instead")]
+    async fn clean_broker_data_legacy(
         &self,
         cluster_name: CheetahString,
         broker_name: CheetahString,
     ) -> RocketMQResult<Option<RemotingCommand>>;
+
+    /// Clean up broker data from controller
+    ///
+    /// Removes all metadata associated with a broker (e.g., after permanent decommission).
+    ///
+    /// # Arguments
+    ///
+    /// * `cluster_name` - The cluster name
+    /// * `broker_name` - The broker name to clean
+    ///
+    /// # Returns
+    ///
+    /// RemotingCommand indicating success or error
+    async fn clean_broker_data(&self, header: &CleanBrokerDataRequestHeader)
+        -> RocketMQResult<Option<RemotingCommand>>;
 
     // ==================== Master Election & ISR Management ====================
 
@@ -558,10 +575,17 @@ impl Controller for MockController {
         Ok(Some(RemotingCommand::create_response_command()))
     }
 
-    async fn clean_broker_data(
+    async fn clean_broker_data_legacy(
         &self,
         _cluster_name: CheetahString,
         _broker_name: CheetahString,
+    ) -> RocketMQResult<Option<RemotingCommand>> {
+        Ok(Some(RemotingCommand::create_response_command()))
+    }
+
+    async fn clean_broker_data(
+        &self,
+        header: &CleanBrokerDataRequestHeader,
     ) -> RocketMQResult<Option<RemotingCommand>> {
         Ok(Some(RemotingCommand::create_response_command()))
     }

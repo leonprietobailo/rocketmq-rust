@@ -22,10 +22,16 @@
 
 use std::sync::Arc;
 
+use crate::controller::Controller;
+use crate::helper::broker_lifecycle_listener::BrokerLifecycleListener;
+use crate::openraft::GrpcRaftService;
+use crate::openraft::RaftNodeManager;
+use crate::protobuf::openraft::open_raft_service_server::OpenRaftServiceServer;
 use cheetah_string::CheetahString;
 use rocketmq_common::common::controller::ControllerConfig;
 use rocketmq_error::RocketMQResult;
 use rocketmq_remoting::protocol::body::sync_state_set_body::SyncStateSet;
+use rocketmq_remoting::protocol::header::admin::clean_controller_broker_data_request_header::CleanBrokerDataRequestHeader;
 use rocketmq_remoting::protocol::header::controller::alter_sync_state_set_request_header::AlterSyncStateSetRequestHeader;
 use rocketmq_remoting::protocol::header::controller::apply_broker_id_request_header::ApplyBrokerIdRequestHeader;
 use rocketmq_remoting::protocol::header::controller::elect_master_request_header::ElectMasterRequestHeader;
@@ -37,12 +43,6 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tonic::transport::Server;
 use tracing::info;
-
-use crate::controller::Controller;
-use crate::helper::broker_lifecycle_listener::BrokerLifecycleListener;
-use crate::openraft::GrpcRaftService;
-use crate::openraft::RaftNodeManager;
-use crate::protobuf::openraft::open_raft_service_server::OpenRaftServiceServer;
 
 /// OpenRaft-based controller implementation
 ///
@@ -182,10 +182,18 @@ impl Controller for OpenRaftController {
         Ok(Some(RemotingCommand::create_response_command()))
     }
 
-    async fn clean_broker_data(
+    async fn clean_broker_data_legacy(
         &self,
         _cluster_name: CheetahString,
         _broker_name: CheetahString,
+    ) -> RocketMQResult<Option<RemotingCommand>> {
+        // TODO: Implement broker data cleanup via OpenRaft
+        Ok(Some(RemotingCommand::create_response_command()))
+    }
+
+    async fn clean_broker_data(
+        &self,
+        header: &CleanBrokerDataRequestHeader,
     ) -> RocketMQResult<Option<RemotingCommand>> {
         // TODO: Implement broker data cleanup via OpenRaft
         Ok(Some(RemotingCommand::create_response_command()))
