@@ -515,23 +515,72 @@ impl ControllerRequestProcessor {
     /// Handle CLEAN_BROKER_DATA request
     ///
     /// Cleans broker data from controller (e.g., after broker offline).
+    /// This operation validates that the broker is offline before cleanup unless
+    /// explicitly allowed to clean living brokers.
+    ///
+    /// # Request Flow
+    ///
+    /// 1. Decode CleanBrokerDataRequestHeader from request
+    /// 2. Extract cluster_name and broker_name from header
+    /// 3. Forward to controller.clean_broker_data()
+    /// 4. Return response command
     ///
     /// # Arguments
     ///
-    /// * `channel` - Network channel
-    /// * `ctx` - Connection context
+    /// * `channel` - Network channel (unused, for compatibility)
+    /// * `ctx` - Connection context (unused, for compatibility)
     /// * `request` - Request command with clean parameters
     ///
     /// # Returns
     ///
     /// Result containing success or error response
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Request decoding fails
+    /// - Required fields are missing
+    /// - Broker is online and clean_living_broker is false
+    /// - Controller operation fails
     async fn handle_clean_broker_data(
         &mut self,
         _channel: Channel,
         _ctx: ConnectionHandlerContext,
-        _request: &mut RemotingCommand,
+        request: &mut RemotingCommand,
     ) -> RocketMQResult<Option<RemotingCommand>> {
-        unimplemented!("unimplemented handle_clean_broker_data")
+        use rocketmq_error::RocketMQError;
+        use rocketmq_remoting::protocol::header::controller::clean_broker_data_request_header::CleanBrokerDataRequestHeader;
+
+        // Decode request header
+        let request_header = request
+            .decode_command_custom_header::<CleanBrokerDataRequestHeader>()
+            .map_err(|e| {
+                RocketMQError::request_header_error(format!(
+                    "Failed to decode CleanBrokerDataRequestHeader: {:?}",
+                    e
+                ))
+            })?;
+
+        // Validate required fields
+        if request_header.cluster_name.is_none() {
+            return Ok(Some(RemotingCommand::create_response_command_with_code_remark(
+                ResponseCode::SystemError,
+                "cluster_name is required".to_string(),
+            )));
+        }
+
+        if request_header.broker_name.is_none() {
+            return Ok(Some(RemotingCommand::create_response_command_with_code_remark(
+                ResponseCode::SystemError,
+                "broker_name is required".to_string(),
+            )));
+        }
+
+        // Forward to Controller
+        self.controller_manager
+            .controller()
+            .clean_broker_data(&request_header)
+            .await
     }
 
     /// Handle GET_NEXT_BROKER_ID request

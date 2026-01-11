@@ -31,6 +31,7 @@ use crate::controller::broker_heartbeat_manager::DEFAULT_BROKER_CHANNEL_EXPIRED_
 use crate::heartbeat::broker_identity_info::BrokerIdentityInfo;
 use crate::heartbeat::broker_live_info::BrokerLiveInfo;
 use crate::helper::broker_lifecycle_listener::BrokerLifecycleListener;
+use crate::helper::broker_valid_predicate::BrokerValidPredicate;
 
 /// Default implementation of BrokerHeartbeatManager
 ///
@@ -362,6 +363,32 @@ impl BrokerHeartbeatManager for DefaultBrokerHeartbeatManager {
 impl Drop for DefaultBrokerHeartbeatManager {
     fn drop(&mut self) {
         self.shutdown();
+    }
+}
+
+pub struct BrokerValidPredicateWithInvokeTime {
+    pub invoke_time: u64,
+    pub heartbeat_manager: DefaultBrokerHeartbeatManager,
+}
+
+impl BrokerValidPredicate for BrokerValidPredicateWithInvokeTime {
+    fn check(&self, cluster_name: &str, broker_name: &str, broker_id: Option<i64>) -> bool {
+        if let Some(id) = broker_id {
+            self.is_broker_active(cluster_name, broker_name, id)
+        } else {
+            // If no broker_id provided, check if any broker in the group is active
+            for entry in self.heartbeat_manager.broker_live_table.iter() {
+                let identity = entry.key();
+                if identity.cluster_name == cluster_name && identity.broker_name == broker_name {
+                    if let Some(bid) = identity.broker_id {
+                        if self.is_broker_active(cluster_name, broker_name, bid as i64) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            false
+        }
     }
 }
 

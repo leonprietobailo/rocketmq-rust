@@ -24,12 +24,14 @@ use std::sync::Arc;
 
 use crate::controller::Controller;
 use crate::helper::broker_lifecycle_listener::BrokerLifecycleListener;
+use crate::helper::broker_valid_predicate::BrokerValidPredicate;
 use crate::openraft::GrpcRaftService;
 use crate::openraft::RaftNodeManager;
 use crate::protobuf::openraft::open_raft_service_server::OpenRaftServiceServer;
 use crate::ReplicasInfoManager;
 use cheetah_string::CheetahString;
 use rocketmq_common::common::controller::ControllerConfig;
+use rocketmq_error::RocketMQError;
 use rocketmq_error::RocketMQResult;
 use rocketmq_remoting::code::response_code::ResponseCode;
 use rocketmq_remoting::protocol::body::controller::controller_metadata_info::ControllerMetadataInfo;
@@ -38,6 +40,7 @@ use rocketmq_remoting::protocol::body::sync_state_set_body::SyncStateSet;
 use rocketmq_remoting::protocol::header::controller::alter_sync_state_set_request_header::AlterSyncStateSetRequestHeader;
 use rocketmq_remoting::protocol::header::controller::apply_broker_id_request_header::ApplyBrokerIdRequestHeader;
 use rocketmq_remoting::protocol::header::controller::apply_broker_id_response_header::ApplyBrokerIdResponseHeader;
+use rocketmq_remoting::protocol::header::controller::clean_broker_data_request_header::CleanBrokerDataRequestHeader;
 use rocketmq_remoting::protocol::header::controller::elect_master_request_header::ElectMasterRequestHeader;
 use rocketmq_remoting::protocol::header::controller::get_next_broker_id_request_header::GetNextBrokerIdRequestHeader;
 use rocketmq_remoting::protocol::header::controller::get_replica_info_request_header::GetReplicaInfoRequestHeader;
@@ -47,6 +50,7 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tonic::transport::Server;
 use tracing::info;
+use crate::heartbeat::default_broker_heartbeat_manager::BrokerValidPredicateWithInvokeTime;
 
 /// OpenRaft-based controller implementation
 ///
@@ -318,11 +322,49 @@ impl Controller for OpenRaftController {
 
     async fn clean_broker_data(
         &self,
-        _cluster_name: CheetahString,
-        _broker_name: CheetahString,
+        request: &CleanBrokerDataRequestHeader,
     ) -> RocketMQResult<Option<RemotingCommand>> {
-        // TODO: Implement broker data cleanup via OpenRaft
-        Ok(Some(RemotingCommand::create_response_command()))
+        // Extract required fields
+        let cluster_name = request
+            .cluster_name
+            .as_ref()
+            .ok_or_else(|| RocketMQError::request_header_error("cluster_name is required"))?;
+        let broker_name = request
+            .broker_name
+            .as_ref()
+            .ok_or_else(|| RocketMQError::request_header_error("broker_name is required"))?;
+
+        let broker_controller_ids_to_clean = request.broker_controller_ids_to_clean.as_ref().map(|s| s.as_str());
+        let clean_living_broker = request.clean_living_broker.unwrap_or(false);
+
+        // For now, we use a simple predicate that always returns false (broker is offline)
+
+        let predicate = BrokerValidPredicateWithInvokeTime {
+            invoke_time: 0,
+            heartbeat_manager: request.
+        };
+        // Call replicas_info_manager to clean broker data
+        let result = self.replica_info_manager.clean_broker_data(
+            cluster_name,
+            broker_name,
+            broker_controller_ids_to_clean,
+            clean_living_broker,
+            &BrokerValidPredicateWithInvokeTime,
+        );
+
+        // Convert ControllerResult to RemotingCommand
+        if result.response_code() == ResponseCode::Success {
+            // If there are events, they should be applied via Raft
+            // For now, return success
+            Ok(Some(RemotingCommand::create_response_command_with_code(
+                ResponseCode::Success,
+            )))
+        } else {
+            Ok(Some(RemotingCommand::create_response_command_with_code_remark(
+                result.response_code(),
+                result.remark().unwrap_or("").to_string(),
+            )))
+        }
     }
 
     async fn elect_master(&self, _request: &ElectMasterRequestHeader) -> RocketMQResult<Option<RemotingCommand>> {
